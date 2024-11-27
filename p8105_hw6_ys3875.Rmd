@@ -9,4 +9,93 @@ output:github_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r}
+library(tidyverse)
+library(rnoaa)
+library(broom)
+library(purrr)
+library(janitor)
+```
+
+##Q1.
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+
+bootstrap_sample <- function(data) {
+  sample_data <- data |>
+    sample_frac(size = 1, replace = TRUE)
+  
+  model <- sample_data |>
+    lm(tmax ~ tmin, data = _)
+  
+  r_squared <- model |>
+    glance() |>
+    pull(r.squared)
+  
+  coefs <- model |>
+    tidy()
+  
+  beta0 <- coefs |>
+    filter(term == "(Intercept)") |>
+    pull(estimate)
+  
+  beta1 <- coefs |>
+    filter(term == "tmin") |>
+    pull(estimate)
+  
+  log_beta0_beta1 <- log(beta0 * beta1)
+  
+  c(r_squared = r_squared, log_beta0_beta1 = log_beta0_beta1)
+}
+
+set.seed(1)
+n_boot <- 5000
+
+bootstrap_results <- replicate(n_boot, bootstrap_sample(weather_df))
+
+bootstrap_results_df <- bootstrap_results |>
+  t() |>
+  as.data.frame() |>
+  setNames(c("r_squared", "log_beta0_beta1"))
+
+bootstrap_results_df |>
+  ggplot(aes(x = r_squared)) +
+  geom_histogram(binwidth = 0.001, color = "black", fill = "lightblue") +
+  labs(
+    title = "Bootstrap Distribution of R-squared",
+    x = expression(hat(r)^2),
+    y = "Frequency"
+  ) +
+  theme_minimal()
+
+bootstrap_results_df |>
+  ggplot(aes(x = log_beta0_beta1)) +
+  geom_histogram(binwidth = 0.05, color = "black", fill = "lightgreen") +
+  labs(
+    title = "Bootstrap Distribution of log(β₀ × β₁)",
+    x = expression(log(hat(beta)[0] * hat(beta)[1])),
+    y = "Frequency"
+  ) +
+  theme_minimal()
+
+r_squared_CI <- bootstrap_results_df$r_squared |>
+  quantile(c(0.025, 0.975))
+
+r_squared_CI
+
+log_beta0_beta1_CI <- bootstrap_results_df$log_beta0_beta1 |>
+  quantile(c(0.025, 0.975))
+
+log_beta0_beta1_CI
+```
 
