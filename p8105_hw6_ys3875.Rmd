@@ -99,3 +99,65 @@ log_beta0_beta1_CI <- bootstrap_results_df$log_beta0_beta1 |>
 log_beta0_beta1_CI
 ```
 
+##Q2.
+```{r}
+homicide_data <- read_csv("hw6_data/homicide-data.csv")
+
+homicide_data <- homicide_data |>
+  mutate(
+    city_state = paste(city, state, sep = ", "),
+    solved_binary = ifelse(disposition == "Closed by arrest", 1, 0),
+    victim_age = as.numeric(victim_age)
+  ) |>
+  filter(
+    !city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL"),
+    victim_race %in% c("Black", "White")
+  )
+
+baltimore_data <- homicide_data |>
+  filter(city_state == "Baltimore, MD")
+
+baltimore_model <- baltimore_data |>
+  glm(solved_binary ~ victim_age + victim_sex + victim_race, data = _, family = binomial)
+
+baltimore_tidy <- baltimore_model |>
+  tidy(conf.int = TRUE, exponentiate = TRUE)
+
+or_sex <- baltimore_tidy |>
+  filter(term == "victim_sexMale") |>
+  select(term, estimate, conf.low, conf.high)
+
+or_sex
+
+city_models <- homicide_data |>
+  group_by(city_state) |>
+  nest() |>
+  mutate(
+    model = map(data, ~ glm(solved_binary ~ victim_age + victim_sex + victim_race, data = .x, family = binomial))
+  )
+
+city_results <- city_models |>
+  mutate(
+    tidied = map(model, ~ tidy(.x, conf.int = TRUE, exponentiate = TRUE))
+  ) |>
+  unnest(tidied) |>
+  filter(term == "victim_sexMale") |>
+  select(city_state, estimate, conf.low, conf.high) |>
+  filter(!is.na(estimate)) |>
+  arrange(estimate) |>
+  mutate(city_state = factor(city_state, levels = unique(city_state)))
+
+ggplot(city_results, aes(x = estimate, y = fct_reorder(city_state, estimate))) +
+  geom_point(color = "blue") +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), height = 0.2) +
+  geom_vline(xintercept = 1, linetype = "dashed", color = "red") +
+  labs(
+    title = "Adjusted Odds Ratios for Solving Homicides by City",
+    x = "Adjusted Odds Ratio (Male vs Female Victims)",
+    y = "City"
+  ) +
+  theme_minimal()
+```
+
+There are some cities have OR close to 1, indicating there is no difference between male and female in solving homicides. For those have OR less than 1, like New York which have the lowest OR, suggests that homicides involving male victims are less likely to be solved compared to those involving female victims. We can see from the plot that, there are only a few cities' OR exceed 1, which leads the opposite conclusion with those less than 1.
+
