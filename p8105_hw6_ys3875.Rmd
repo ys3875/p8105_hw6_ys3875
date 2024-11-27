@@ -2,7 +2,7 @@
 title: "p8105_hw6_ys3875"
 author: "Yanhao Shen"
 date: "2024-11-27"
-output:github_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -15,6 +15,7 @@ library(rnoaa)
 library(broom)
 library(purrr)
 library(janitor)
+library(modelr)
 ```
 
 ##Q1.
@@ -160,4 +161,81 @@ ggplot(city_results, aes(x = estimate, y = fct_reorder(city_state, estimate))) +
 ```
 
 There are some cities have OR close to 1, indicating there is no difference between male and female in solving homicides. For those have OR less than 1, like New York which have the lowest OR, suggests that homicides involving male victims are less likely to be solved compared to those involving female victims. We can see from the plot that, there are only a few cities' OR exceed 1, which leads the opposite conclusion with those less than 1.
+
+##Q3.
+```{r}
+birthweight <- read_csv("hw6_data/birthweight.csv") |>
+  janitor::clean_names() |>
+  mutate(
+    babysex = factor(babysex, levels = c(1, 2), labels = c("Male", "Female")),
+    frace = factor(frace),
+    malform = factor(malform, levels = c(0, 1), labels = c("Absent", "Present")),
+    mrace = factor(mrace)
+  )
+
+missing_summary <- birthweight |>
+  summarise(across(everything(), ~ sum(is.na(.)))) |>
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "missing_count")
+missing_summary
+#there is no missing value
+
+model_full <- lm(bwt ~ babysex + bhead + blength + delwt+ fincome + frace + gaweeks + malform+ menarche+ momage +mheight +mrace +parity +pnumlbw+ pnumsga +ppbmi+ ppwt + wtgain + smoken, data = birthweight)
+summary(model_full)
+
+q3_model <- lm(bwt ~ babysex + bhead + blength + delwt+ fincome + gaweeks +mrace +parity + smoken, data = birthweight)
+```
+I fitted all the variables to the model, and then filter out those with large p value (>0.05). then, I fitted my desired q3_model with the rest variable.
+```{r}
+birthweight_augmented <- birthweight |>
+  add_predictions(model_full) |>
+  add_residuals(model_full)
+
+ggplot(birthweight_augmented, aes(x = pred, y = resid)) +
+  geom_point(alpha = 0.5) +
+  geom_hline(yintercept = 0, color = "red", linetype = "dashed") +
+  labs(
+    title = "Residuals vs. Fitted Values",
+    x = "Fitted Values (Predicted Birth Weight)",
+    y = "Residuals"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+model_1 <- lm(bwt ~ blength + gaweeks, data = birthweight)
+model_2<- lm(bwt ~ bhead * blength * babysex,data = birthweight)
+
+calculate_rmse <- function(model_formula, train_data, test_data) {
+  train_data <- as_tibble(train_data)
+  test_data <- as_tibble(test_data)
+
+  model <- lm(model_formula, data = train_data)
+  predictions <- predict(model, newdata = test_data)
+  actuals <- test_data$bwt
+  sqrt(mean((predictions - actuals)^2))
+}
+
+set.seed(123)
+cv_samples <- crossv_mc(birthweight, n = 5)
+
+rmse_results <- cv_samples |> 
+  mutate(
+    rmse_q3 = map2_dbl(train, test, ~ calculate_rmse(bwt ~ babysex + bhead + blength + delwt+ fincome + gaweeks +mrace +parity + smoken, .x, .y)),
+    rmse_1 = map2_dbl(train, test, ~ calculate_rmse(bwt ~ blength + gaweeks, .x, .y)),
+    rmse_2 = map2_dbl(train, test, ~ calculate_rmse(bwt ~ bhead * blength * babysex, .x, .y))
+  )
+
+rmse_summary <- rmse_results |> 
+  select(starts_with("rmse")) |> 
+  pivot_longer(
+    cols = everything(),
+    names_to = "model",
+    values_to = "rmse"
+  ) |> 
+  group_by(model) |> 
+  summarise(mean_rmse = mean(rmse, na.rm = TRUE))
+
+rmse_summary
+```
+Based on the mean rmse, we can conclude that model_q3 has the lowest mean rmse, and thus it performs the best, reflecting its comprehensive set of predictors. 
 
