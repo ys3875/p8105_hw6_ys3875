@@ -1,0 +1,12 @@
+---
+title: "p8105_hw6_ys3875"
+author: "Yanhao Shen"
+date: "2024-11-27"
+output:github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
